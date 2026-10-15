@@ -66,14 +66,12 @@ jobs:
           echo "OPENWRT=$RUNNER_TEMP/wf3000a-build/openwrt" >> "$GITHUB_ENV"
           test "$(git -C "$RUNNER_TEMP/wf3000a-build/openwrt" rev-parse HEAD)" = "$SOURCE_COMMIT"
 
-      - name: Add WF3000A board and custom packages
+      - name: Add WF3000A board support
         run: |
           python3 scripts/prepare-source.py "$OPENWRT"
-          bash scripts/prepare-packages.sh "$OPENWRT"
-          cp feeds.conf.default "$OPENWRT/feeds.conf.default"
-          mkdir -p "$OPENWRT/files"
-          cp -a files/. "$OPENWRT/files/"
-          chmod 0755 "$OPENWRT/files/etc/uci-defaults/99-wf3000a-custom"
+          # 不再调用 prepare-packages.sh —— 纯净固件不拉任何第三方插件。
+          # 不再覆盖 feeds.conf.default —— 用源码自带的官方源。
+          # 不再拷贝 files/ —— 没有需要预置的自定义配置。
 
       - name: Update and install feeds
         working-directory: ${{ runner.temp }}/wf3000a-build/openwrt
@@ -87,21 +85,11 @@ jobs:
           cp "$GITHUB_WORKSPACE/config/wf3000a.config" .config
           make defconfig
 
+          # 只校验「能不能跑起来」的最小集合，不校验任何插件。
           required=(
             CONFIG_TARGET_mediatek_filogic_DEVICE_kst_wf3000a
             CONFIG_PACKAGE_kmod-mediatek_hnat
-            CONFIG_PACKAGE_luci-app-passwall
-            CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy
-            CONFIG_PACKAGE_luci-app-ddns-go
-            CONFIG_PACKAGE_luci-app-adguardhome
-            CONFIG_PACKAGE_tailscale
-            CONFIG_PACKAGE_luci-theme-argon
-            CONFIG_PACKAGE_luci-app-attendedsysupgrade
-            CONFIG_PACKAGE_luci-app-vnstat2
-            CONFIG_PACKAGE_luci-app-wol
-            CONFIG_PACKAGE_luci-app-upnp
-            CONFIG_PACKAGE_opkg
-            CONFIG_PACKAGE_luci-app-nlbwmon
+            CONFIG_PACKAGE_luci
           )
           for symbol in "${required[@]}"; do
             grep -qx "${symbol}=y" .config || {
@@ -110,8 +98,14 @@ jobs:
             }
           done
 
-          grep -n 'reg = <0x0580000 0x0f280000>;' \
+          # 确认 DTS 是 114MiB 布局（原版这里查的是 248MiB 的 0x0f280000）
+          grep -n 'reg = <0x0580000 0x07200000>;' \
             target/linux/mediatek/dts/mt7981b-kst-wf3000a.dts
+
+          # 确认机型已注册进镜像构建
+          grep -n 'define Device/kst_wf3000a' \
+            target/linux/mediatek/image/filogic.mk
+
           ./scripts/diffconfig.sh | tee "$GITHUB_WORKSPACE/build.diffconfig"
 
       - name: Download sources
@@ -158,5 +152,7 @@ jobs:
             Source: padavanonly/immortalwrt-mt798x-6.6
             Branch: openwrt-24.10-6.6
             Commit: ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8
-            Layout: nmbm0:1024k(bl2),512k(u-boot-env),2048k(factory),2048k(fip),248320k(ubi)
+            Layout: nmbm0:1024k(bl2),512k(u-boot-env),2048k(factory),2048k(fip),116736k(ubi)
+            纯净固件：官方默认包 + LuCI(中文) + HNAT 硬件加速，无第三方插件。
+            更新方式：U-Boot Web（192.168.1.1，布局选 114m）上传 factory.bin。
           files: ${{ steps.collect.outputs.firmware_dir }}/*
