@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # 首次启动时默认使用 Argon；插件只安装，不预填用户凭据。
-uci -q set luci.main.mediaurlbase='/luci-static/argon'
-uci -q commit luci
+# uci -q set luci.main.mediaurlbase='/luci-static/argon'
+# uci -q commit luci
 
 exit 0
