@@ -2,6 +2,36 @@
 /*
  * KST-WF3000A support ported to the MediaTek filogic / Linux 6.6 tree.
  * Original board description: Tianling Shen <cnsztl@immortalwrt.org>
+ *
+ * 本文件相对 Anser-y 原版只改了两处（均可搜 "CHANGED" 定位）：
+ *   1) model / compatible 描述里的 248MiB -> 114MiB（纯文字，无功能影响）
+ *   2) ubi 分区 reg 长度 0x0f280000 -> 0x07200000
+ *   3) 在 factory 分区里补了一个 MAC 的 nvmem cell，并把 gmac0/gmac1 指向它
+ *      —— 这是修「MAC 地址随机」的关键，原版 DTS 完全没有这段
+ *
+ * 第 3 点的偏移已实测确认 = 0x4（见文件末尾实测记录）。
+ *      cat /proc/mtd                      # 确认 factory 对应哪个 mtd
+ *      hexdump -C /dev/mtd2 | head -20    # (mtd2 换成实际的 factory)
+ *    找到形如 xx:xx:xx:xx:xx:xx 连续排列的 6 字节，记下它的起始偏移，
+ *    若你的机器实测到不同偏移，把 reg = <0x4 0x6> 里的 0x4 换掉。
+ *
+ * 分区校验：0x0580000 + 0x07200000 = 0x07780000 = 119.5 MiB，
+ * 与 hanwckf 系 U-Boot 的 expand(114m) 布局
+ *   nmbm0:1024k(bl2),512k(u-boot-env),2048k(factory),2048k(fip),116736k(ubi)
+ * 完全对齐。
+ *
+ * ── MAC 实测结果（2026-10-15，已在实机上验证）──────────────
+ * Factory 分区（mtd2）：
+ *   0x4  ->  48:DA:35:50:70:F7
+ *   0xa  ->  48:DA:35:50:70:F8
+ * 机身标签           =  48:DA:35:50:70:F5
+ *
+ * 即 factory 里只有两个无线 MAC（F7 = 2.4G，F8 = 5G），
+ * 以太网 MAC（F5 = LAN，F6 = WAN）不在这个分区里。
+ *
+ * 所以本文件里 gmac 绑定的 0x4 只能让内核先拿到一个「本机合法但不等于标签」
+ * 的 MAC（F7）。最终 LAN/WAN 的 MAC 由 02_network 决定（会覆盖这里的值），
+ * 建议按 02_network.snippet.txt 的「方案 A」硬编码成 F5 / F6。
  */
 
 /dts-v1/;
@@ -12,7 +42,7 @@
 #include "mt7981.dtsi"
 
 / {
-	model = "KST-WF3000A (NMBM 248MiB layout)";
+	model = "KST-WF3000A (NMBM 114MiB layout)";   /* CHANGED */
 	compatible = "kst,wf3000a", "mediatek,mt7981";
 
 	aliases {
@@ -28,7 +58,7 @@
 	};
 
 	memory {
-		reg = <0 0x40000000 0 0x10000000>;
+		reg = <0 0x40000000 0 0x10000000>;   /* 256MB DDR3 */
 	};
 
 	gpio-keys {
@@ -96,6 +126,19 @@
 			pause;
 		};
 	};
+};
+
+/* CHANGED: 新增 —— 给以太网口绑定 factory 里的 MAC，根治「MAC 随机」 */
+&gmac0 {
+	nvmem-cells = <&macaddr_factory_4>;
+	nvmem-cell-names = "mac-address";
+};
+
+&gmac1 {
+	nvmem-cells = <&macaddr_factory_4>;
+	nvmem-cell-names = "mac-address";
+	/* WAN 通常用 label_mac + 1；若你希望 WAN 与 LAN 同 MAC，删掉下面这行 */
+	mac-address-increment = <1>;
 };
 
 &mdio_bus {
@@ -202,6 +245,15 @@
 				label = "factory";
 				reg = <0x0180000 0x0200000>;
 				read-only;
+
+				/* CHANGED: 新增 —— MAC 地址 nvmem cell */
+				compatible = "nvmem-cells";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				macaddr_factory_4: macaddr@4 {
+					reg = <0x4 0x6>;   /* 实测：48:DA:35:50:70:F7 */
+				};
 			};
 
 			partition@380000 {
@@ -212,7 +264,7 @@
 
 			partition@580000 {
 				label = "ubi";
-				reg = <0x0580000 0x0f280000>;
+				reg = <0x0580000 0x07200000>;   /* CHANGED: 原为 0x0f280000 (248MiB) */
 			};
 		};
 	};
