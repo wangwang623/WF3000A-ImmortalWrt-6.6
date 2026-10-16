@@ -8,7 +8,7 @@
 本工程使用 [`padavanonly/immortalwrt-mt798x-6.6`](https://github.com/padavanonly/immortalwrt-mt798x-6.6) 的 `openwrt-24.10-6.6` 分支，通过 GitHub Actions 编译 KST-WF3000A 固件。
 注：已将源码仓库fork到本地，编译使用fork的本地仓库源代码。
 
-固件使用的是114M大分区版本，需要先刷入多分区uboot后再刷入固件。刷uboot必须先解锁ssh，解锁可以在配置项中导入“nl_wr8103-sysbackup-ssh.bin”文件后拔电源重启，即可开启ssh输入uboot。刷入uboot推荐使用putty和winscp。
+固件使用的是114M大分区版本，需要先刷入多分区uboot后再刷入固件。刷uboot必须先解锁ssh，解锁可以在配置项中导入“nl_wr8103-sysbackup-ssh.bin”文件后拔电源重启，即可开启ssh刷入uboot。刷入uboot推荐使用putty和winscp。
 uboot地址链接如下：https://github.com/VIKINGYFY/UBOOT-CI, (release/Yuzhii0718-SP2-26.10.12, fip-mt7981_kst_wf3000a_SP2-Yuzhii-dhcpd-fixed-parts-multi-layout_md5-63d9666dae57cd3db2da4e20c20fec22-26.10.12.bin).
 该uboot源码fork自[Yuzhii0718/bl-mt798x-dhcpd](https://github.com/Yuzhii0718/bl-mt798x-dhcpd).
 
