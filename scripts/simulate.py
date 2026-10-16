@@ -56,6 +56,17 @@ try:
 except Exception as e:
     chk(False, "build.yml YAML 正确", str(e))
 
+# 这两个是【参考文件】：云编译不读它们（prepare-source.py 直接在源码上做插入），
+# 只有本模拟脚本会读（用来反推「未打补丁」的上游版本做对照测试）。
+# 缺失时给出清晰提示而非 traceback —— 云编译不受影响。
+missing_ref = [f for f in ("02_network", "platform.sh")
+               if not (ROOT / "custom/wf3000a" / f).is_file()]
+if missing_ref:
+    print(f"  [提示] 参考文件缺失: {', '.join(missing_ref)}")
+    print("         云编译【不需要】它们，仅本模拟脚本需要。")
+    print("         若已自行删除，请跳过本模拟；或把它们放回 custom/wf3000a/ 。")
+    sys.exit(0)
+
 for f in ("02_network", "platform.sh"):
     r = run(["sh", "-n", str(ROOT / "custom/wf3000a" / f)])
     chk(r.returncode == 0, f"{f} (参考文件) shell 语法正确")
@@ -147,6 +158,11 @@ step("3. 模拟 make defconfig 与 workflow 校验")
 #      由 opkg 的依赖自动 select。这里正好验证「不写也能过软校验」。
 AVAILABLE = {
     "luci", "opkg", "ca-bundle", "ca-certificates", "luci-i18n-base-zh-cn",
+    "libustream-openssl", "ppp", "ppp-mod-pppoe", "kmod-nft-offload",
+    "luci-app-firewall", "luci-i18n-firewall-zh-cn",
+    "luci-app-package-manager", "luci-i18n-package-manager-zh-cn",
+    # 注意：不含旧名 luci-app-opkg / luci-i18n-opkg-zh-cn，
+    #       因为 24.10 已改名。这里正好验证「只留新名也能通过」。
     "kmod-mediatek_hnat", "kmod-mt7981-firmware", "mt7981-wo-firmware",
     "uhttpd", "rpcd", "libuci", "libubus",
 }
@@ -158,6 +174,15 @@ REQUIRED = [
     "CONFIG_PACKAGE_kmod-mediatek_hnat",
     "CONFIG_PACKAGE_luci",
     "CONFIG_LUCI_LANG_zh_Hans",          # 中文界面：明确要求，缺失即中止
+]
+
+# 「新旧双名」组：两个名字只要【至少一个】存在即通过，两个都缺才失败。
+# 用于 luci-app-package-manager / luci-app-opkg 这种改过名的包。
+RENAME_GROUPS = [
+    ("LuCI 软件包页面", ["CONFIG_PACKAGE_luci-app-package-manager",
+                          "CONFIG_PACKAGE_luci-app-opkg"]),
+    ("软件包页面中文化",  ["CONFIG_PACKAGE_luci-i18n-package-manager-zh-cn",
+                          "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn"]),
 ]
 SOFT = [
     "CONFIG_PACKAGE_opkg",
@@ -192,6 +217,14 @@ def validate(kept, available, devices, label):
             print(f"    [OK  ] 硬校验 {sym}")
         else:
             print(f"    [FAIL] 硬校验 {sym}  ← 编译将中止")
+            ok = False
+    # 新旧双名组：至少一个存在即通过
+    for gname, group in RENAME_GROUPS:
+        hit = [s for s in group if s in kept]
+        if hit:
+            print(f"    [OK  ] 双名组 {gname}  → {hit[0]}")
+        else:
+            print(f"    [FAIL] 双名组 {gname}  ← 两个名字都没有，编译将中止")
             ok = False
     for sym in SOFT:
         if sym in kept:
@@ -232,6 +265,28 @@ avail_d2 = AVAILABLE - {"luci-i18n-base-zh-cn"}
 kept_d2 = defconfig(raw, avail_d2, DEVICE_SYMBOLS)
 ok_d2 = validate(kept_d2, avail_d2, DEVICE_SYMBOLS, "D2 兜底 i18n 包缺失")
 chk(ok_d2, "场景D2 兜底包缺失不误伤（主要靠 LUCI_LANG 保证）")
+
+# 场景 E：源码里只有【旧名】luci-app-opkg（24.10 之前）—— 应通过
+avail_e = (AVAILABLE - {"luci-app-package-manager",
+                        "luci-i18n-package-manager-zh-cn"}) | {
+    "luci-app-opkg", "luci-i18n-opkg-zh-cn"}
+kept_e = defconfig(raw, avail_e, DEVICE_SYMBOLS)
+ok_e = validate(kept_e, avail_e, DEVICE_SYMBOLS, "E 源码只有旧名 opkg")
+chk(ok_e, "场景E 旧名可用时通过（双名保险生效）")
+
+# 场景 E2：新旧名字【都没有】—— 必须失败
+avail_e2 = AVAILABLE - {"luci-app-package-manager",
+                        "luci-i18n-package-manager-zh-cn"}
+kept_e2 = defconfig(raw, avail_e2, DEVICE_SYMBOLS)
+ok_e2 = validate(kept_e2, avail_e2, DEVICE_SYMBOLS, "E2 新旧名都缺失")
+chk(not ok_e2, "场景E2 正确拦截（软件包页面彻底缺失时中止）")
+
+# 场景 F：kmod-nft-offload / ppp 等新增项缺失 —— 只警告不中止（软项）
+avail_f = AVAILABLE - {"kmod-nft-offload", "ppp-mod-pppoe",
+                       "libustream-openssl", "luci-app-firewall"}
+kept_f = defconfig(raw, avail_f, DEVICE_SYMBOLS)
+ok_f = validate(kept_f, avail_f, DEVICE_SYMBOLS, "F 新增可选项缺失")
+chk(ok_f, "场景F 新增项缺失不误伤编译（静默丢弃，仅影响体验）")
 
 
 # ══════════════════════════════════════════════════════════════
