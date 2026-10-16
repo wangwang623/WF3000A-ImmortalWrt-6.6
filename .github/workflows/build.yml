@@ -119,16 +119,46 @@ jobs:
               exit 1
             }
           done
-          echo "硬校验通过：机型 / HNAT / LuCI 均已选中"
+          echo "硬校验通过：机型 / HNAT / LuCI / 中文 均已选中"
+
+          # ── 双名组校验：改过名的包，两个名字有其一即通过 ────
+          # luci-app-opkg 在 24.10 改名为 luci-app-package-manager。
+          # 两个名字都写进 .config，存在的生效、不存在的被静默丢弃。
+          # 这里确认「至少有一个」真的进了最终配置；两个都缺才算失败。
+          check_renamed() {
+            local label="$1"; shift
+            local hit=""
+            for symbol in "$@"; do
+              if grep -qx "${symbol}=y" .config; then hit="$symbol"; break; fi
+            done
+            if [ -n "$hit" ]; then
+              echo "双名组 OK：$label → $hit"
+            else
+              echo "::error::$label 新旧名字都未生效（$*）" >&2
+              exit 1
+            fi
+          }
+          check_renamed "LuCI 软件包页面" \
+            CONFIG_PACKAGE_luci-app-package-manager \
+            CONFIG_PACKAGE_luci-app-opkg
+          check_renamed "软件包页面中文化" \
+            CONFIG_PACKAGE_luci-i18n-package-manager-zh-cn \
+            CONFIG_PACKAGE_luci-i18n-opkg-zh-cn
 
           # ── 软校验：缺了不致命，只提醒 ─────────────────────
           # 这几项支撑「刷完后 opkg install」，缺了不会编译失败，
           # 但会导致刷完后连不上 https 软件源。用 warning 而非 error，
           # 避免上游改名时误伤编译。
+          # 以下为「体验增强项」：官方固件带，但本源码若没有会被静默丢弃。
+          # 缺了不导致编译失败，只是功能少一点，因此只警告。
           soft=(
             CONFIG_PACKAGE_opkg
             CONFIG_PACKAGE_ca-bundle
             CONFIG_PACKAGE_ca-certificates
+            CONFIG_PACKAGE_libustream-openssl
+            CONFIG_PACKAGE_luci-app-firewall
+            CONFIG_PACKAGE_kmod-nft-offload
+            CONFIG_PACKAGE_ppp-mod-pppoe
           )
           for symbol in "${soft[@]}"; do
             grep -qx "${symbol}=y" .config \
