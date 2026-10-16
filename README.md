@@ -1,15 +1,23 @@
 # WF3000A ImmortalWrt 6.6 云编译工程
 
-本工程使用 [`padavanonly/immortalwrt-mt798x-6.6`](https://github.com/padavanonly/immortalwrt-mt798x-6.6) 的 `openwrt-24.10-6.6` 分支，通过 GitHub Actions 编译 KST-WF3000A 固件。
+# WF3000A 纯净固件 —— 构建时打补丁模式
 
-上游 6.6 分支目前没有 WF3000A 设备定义。本工程把旧版 WF3000A 板级描述移植到 `mediatek/filogic` 目标，并固定源码提交，避免上游变化导致补丁静默错位。
+**核心原则：`immortalwrt-mt798x-6.6` 源码仓库保持原样，一个字节都不手动改。**
+所有移植改动由 `scripts/prepare-source.py` 在 CI 里、克隆之后、编译之前完成。
+
+本工程使用 [`padavanonly/immortalwrt-mt798x-6.6`](https://github.com/padavanonly/immortalwrt-mt798x-6.6) 的 `openwrt-24.10-6.6` 分支，通过 GitHub Actions 编译 KST-WF3000A 固件。
+注：已将源码仓库fork到本地，编译使用fork的本地仓库源代码。
+
+固件使用的是114M大分区版本，需要先刷入多分区uboot后再刷入固件。刷uboot必须先解锁ssh，解锁可以在配置项中导入“nl_wr8103-sysbackup-ssh.bin”文件后拔电源重启，即可开启ssh输入uboot。刷入uboot推荐使用putty和winscp。
+uboot地址链接如下：https://github.com/VIKINGYFY/UBOOT-CI, (release/Yuzhii0718-SP2-26.10.12, fip-mt7981_kst_wf3000a_SP2-Yuzhii-dhcpd-fixed-parts-multi-layout_md5-63d9666dae57cd3db2da4e20c20fec22-26.10.12.bin).
+该uboot源码fork自[Yuzhii0718/bl-mt798x-dhcpd](https://github.com/Yuzhii0718/bl-mt798x-dhcpd).
 
 ## 分区布局
 
 内核 DTS 使用以下 NMBM 分区表：
 
 ```text
-mtdparts=nmbm0:1024k(bl2),512k(u-boot-env),2048k(factory),2048k(fip),248320k(ubi)
+mtdparts=nmbm0:1024k(bl2),512k(u-boot-env),2048k(factory),2048k(fip),116736k(ubi)
 ```
 
 对应十六进制布局：
@@ -20,12 +28,9 @@ mtdparts=nmbm0:1024k(bl2),512k(u-boot-env),2048k(factory),2048k(fip),248320k(ubi
 | u-boot-env | `0x0100000` | `0x0080000` |
 | factory | `0x0180000` | `0x0200000` |
 | fip | `0x0380000` | `0x0200000` |
-| ubi | `0x0580000` | `0x0f280000`（248320 KiB） |
+| ubi | `0x0580000` | `0x07200000`（116736 KiB） |
 
-# WF3000A 纯净固件 —— 构建时打补丁模式
 
-**核心原则：`immortalwrt-mt798x-6.6` 源码仓库保持原样，一个字节都不手动改。**
-所有移植改动由 `scripts/prepare-source.py` 在 CI 里、克隆之后、编译之前完成。
 
 ## 目录
 
